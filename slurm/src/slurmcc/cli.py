@@ -8,6 +8,9 @@ import sys
 import traceback
 import time
 from argparse import ArgumentParser
+from datetime import date
+from datetime import datetime
+from datetime import timedelta
 from math import ceil, floor
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, TextIO, Union
 
@@ -18,6 +21,8 @@ from hpc.autoscale.clilib import (
     disablecommand,
     main as clilibmain,
 )
+
+from hpc.autoscale.cost.azurecost import azurecost
 from hpc.autoscale.hpctypes import Memory
 from hpc.autoscale import util as hpcutil
 from hpc.autoscale.job.demandprinter import OutputFormat
@@ -32,7 +37,7 @@ from . import util as slutil
 from . import CyclecloudSlurmError
 from hpc.autoscale.results import AllocationResult
 
-from hpc.autoscale.ccbindings import cluster_service_client as csc
+#from hpc.autoscale.ccbindings import cluster_service_client as csc
 
 
 def csv_list(x: str) -> List[str]:
@@ -129,6 +134,56 @@ class SlurmCLI(CommonCLI):
         )
         parser.add_argument("-R", "--region", required=True)
         parser.add_argument("--base-name", required=True)
+
+    def cost_parser(self, parser: ArgumentParser) -> None:
+        parser.add_argument("-s", "--start",  type=lambda s: datetime.strptime(s, '%Y-%m-%d'), 
+                            default=date.today().isoformat(),
+                            help="Start time period (yyyy-mm-dd), defaults to current day.")
+        parser.add_argument("-e", "--end",  type=lambda s: datetime.strptime(s, '%Y-%m-%d'),
+                            default=date.today().isoformat(),
+                            help="End time period (yyyy-mm-dd), defaults to current day.")
+        parser.add_argument("-o", "--out", required=True, help="Fully qualified output filename")
+
+        parser.add_argument("--partition", action='store_true', help="Show costs aggregated by partitions")
+        parser.add_argument("--user", action='store_true', help="Show costs aggregated by user")
+        parser.add_argument("-f", "--fmt", type=str, help="Comma separated list of formatting options")
+    
+    def cost(self, config: Dict, start, end, partition, user, fmt, out):
+        """
+        Cost analysis and reporting tool that maps Azure costs
+        to SLURM Job Accounting data. This is an experimental
+        feature.
+        """
+        print(f"config: {config}")
+        config['cache_root'] = "/tmp"
+        print(f"start={start}")
+        curr = datetime.today()
+        delta = timedelta(days=365)
+
+        if (curr - start) >= delta:
+            raise ValueError("start date cannot be more than 1 year back from today")
+
+        if start > end:
+            raise ValueError("Start date cannot be after end date")
+        if end > curr:
+            raise ValueError("End date cannot be in the future")
+        
+        print(f"end: {end}")
+        print(f"partition: {partition}")
+        print(f"user: {user}")
+        print(f"format: {fmt}")
+
+        filename = os.path.abspath(out)
+        # verify output file is writable
+        with open(filename, 'w') as fp:
+            pass
+        print(f"out: {out}")
+
+        print("testing azure_cost")
+        azcost = azurecost(config)
+        print(azcost.test_azure_cost())
+
+        
 
     def add_pool_parser(self, parser: ArgumentParser) -> None:
         self._pool_parser(parser)
