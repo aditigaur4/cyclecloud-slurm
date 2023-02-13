@@ -127,9 +127,6 @@ class SlurmCLI(CommonCLI):
             output_prefix = prefix
         return [output_prefix + x + "," for x in self.slurm_node_names]
 
-    def partitions_parser(self, parser: ArgumentParser) -> None:
-        parser.add_argument("--allow-empty", action="store_true", default=False)
-
     def cost_parser(self, parser: ArgumentParser) -> None:
         parser.add_argument("-s", "--start",  type=lambda s: datetime.strptime(s, '%Y-%m-%d'), 
                             default=date.today().isoformat(),
@@ -180,9 +177,9 @@ class SlurmCLI(CommonCLI):
         driver = CostDriver(azcost)
         driver.run(start, end, out)
 
-
-        
-
+    def partitions_parser(self, parser: ArgumentParser) -> None:
+        parser.add_argument("--allow-empty", action="store_true", default=False)
+ 
     def partitions(self, config: Dict, allow_empty: bool = False) -> None:
         """
         Generates partition configuration
