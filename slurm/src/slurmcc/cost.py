@@ -1,7 +1,7 @@
 import os
 import json
 import csv
-import tabulate
+from tabulate import tabulate
 from datetime import datetime
 import hpc.autoscale.hpclogging as log
 from collections import namedtuple
@@ -230,9 +230,10 @@ class FetchSlurm:
                 self.stats.cost_per_sku[(region,sku_name)] = 0
             self.stats.cost_per_sku[(region,sku_name)] += charged_cost
 
-            az_fmt = cost_fmt.az_fmt_t(sku_name=sku_name, meter=pricing['meterName'], rate=pricing['retailRate'],
+            az_fmt = cost_fmt.az_fmt_t(sku_name=sku_name, meter=pricing['meterName'], rate=pricing['retailPrice'],
                                         cost=charged_cost, region=region,spot=spot,metercat=pricing['serviceName'],
-                                        meterid=pricing['meterId'], currency=pricing['currencyCode'], resourcegroup='null')
+                                        meterid=pricing['meterId'], currency=pricing['currencyCode'], resourcegroup='null',
+                                        metersubcat='null')
             out_row = []
             for f in cost_fmt.out_fmt_t._fields:
                 if f in cost_fmt.in_fmt_t._fields:
