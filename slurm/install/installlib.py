@@ -3,8 +3,10 @@ import json
 import logging
 import os
 import pwd
+import re
 import shutil
 import subprocess
+import tempfile
 import time
 from types import TracebackType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
@@ -16,7 +18,6 @@ class ConvergeError(RuntimeError):
 
 class ConvergeRetry(RuntimeError):
     pass
-
 
 
 def blob_download(filename: str, project: str, node: Dict) -> str:
@@ -149,6 +150,7 @@ def template(
             contents = fr.read()
 
         with open(dest, "w") as fw:
+
             fw.write(contents.format(**variables))
 
     chmod(dest, mode)
@@ -237,6 +239,7 @@ def create_service(
     working_dir: str = "",
     user: str = "root",
 ) -> None:
+
     service_desc = f"""
 [Unit]
 Description={name}
@@ -249,8 +252,12 @@ Restart=always
 
 [Install]
 WantedBy=multi-user.target"""
-    with open("/etc/systemd/system/{name}.service", "w") as fw:
+    with open(f"/etc/systemd/system/{name}.service", "w") as fw:
         fw.write(service_desc)
+
+
+def enable_service(name: str) -> None:
+    execute(f"enable service {name}", command=["systemctl", "enable", name])
 
 
 def start_service(name: str) -> None:
@@ -262,24 +269,18 @@ def restart_service(name: str) -> None:
 
 
 def cron(desc: str, minute: str, command: str) -> None:
-    pass
-
-
-_DEFERRED_BLOCKS: List[Tuple[str, Callable[[], Any]]] = []
-
-
-def defer_block(desc: str, block: Callable[[], Any], first: bool = False) -> None:
-    if first:
-        _DEFERRED_BLOCKS.insert(0, (desc, block))
-    else:
-        _DEFERRED_BLOCKS.append((desc, block))
-
-
-def finish() -> None:
-    for desc, block in _DEFERRED_BLOCKS:
-        logging.info(f"Begin deferred block: {desc}")
-        block()
-        logging.info(f"End deferred block: {desc}")
+    temp_name = tempfile.mktemp(".crontab")
+    try:
+        with open(temp_name, "w") as fw:
+            fw.write(f"# {desc}\n")
+            fw.write(f"{minute} * * * * {command}\n")
+        with open(temp_name) as fr:
+            print("Adding crontab:")
+            print(fr.read())
+        subprocess.check_call(["crontab", temp_name])
+    finally:
+        if os.path.exists(temp_name):
+            os.remove(temp_name)
 
 
 def _merge_dict(a: Dict, b: Dict) -> Dict:
@@ -319,19 +320,19 @@ def execute(
     stdout: Optional[str] = None,
     retries: int = 0,
     retry_delay: int = 0,
-    guard_file: Optional[str] = None,  # 
+    guard_file: Optional[str] = None,  #
 ) -> None:
     if guard_file and os.path.exists(guard_file):
         logging.info(f"Skipping '{desc}' because {guard_file} exists.")
         return
 
+    logging.getLogger("audit").info(f"execute: {desc}")
     logging.info(f"execute: {desc}")
     if stdout and os.path.exists(stdout):
         return
 
     for attempt in range(min(0, retries) + 1):
         try:
-            print(f"RDH command {command}")
             stdout_content = subprocess.check_output(command)
             if stdout:
                 with open(stdout, "w") as fw:
@@ -347,3 +348,79 @@ def execute(
     if guard_file:
         with open(guard_file, "w") as fw:
             fw.write("")
+
+
+def _waagent_service_name(platform_family: str) -> str:
+    if platform_family in ["ubuntu", "debian"]:
+        waagent_service_name = "walinuxagent"
+    else:
+        waagent_service_name = "waagent"
+    return waagent_service_name
+
+
+def _ensure_monitoring(platform_family: str) -> None:
+    with open("/etc/waagent.conf") as fr:
+        lines = fr.readlines()
+
+    modified = False
+    for i in range(len(lines)):
+        line = lines[i].strip().lower()
+        if re.match("^provisioning.monitorhostname=n$", line):
+            lines[i] = "Provisioning.MonitorHostName=y\n"
+            modified = True
+
+    if modified:
+        with open("/etc/waagent.conf.tmp", "w") as fw:
+            for line in lines:
+                fw.write(line)
+        restart_service(_waagent_service_name(platform_family))
+
+
+def _wait_for_hostname(hostname: str) -> None:
+    attempts = 12
+    retry_delay = 10
+
+    for a in range(attempts):
+        nslookup_stdout = _unchecked_output(["nslookup", hostname])
+        if hostname in nslookup_stdout:
+            return
+        logging.info(f"{a}/{attempts} waiting for hostname to register in dns.")
+        time.sleep(retry_delay)
+    raise RuntimeError("Could not register hostname in DNS")
+
+
+def _unchecked_output(cmd: List[str]) -> str:
+    try:
+        return subprocess.check_output(cmd).decode()
+    except Exception as e:
+        logging.debug(f"attempt to run {' '.join(cmd)} failed: {e}")
+        return ""
+
+
+def set_hostname(
+    hostname: str, platform_family: str, monitor_hostname: bool = True
+) -> None:
+    if monitor_hostname:
+        _ensure_monitoring(platform_family)
+    pub_hostname_path = "/var/lib/waagent/published_hostname"
+
+    nslookup_stdout = _unchecked_output(["nslookup", hostname])
+    hostname_stdout = _unchecked_output(["hostname"])
+    pub_hostname_exists = os.path.exists(pub_hostname_path)
+    if (
+        hostname not in nslookup_stdout
+        and hostname not in hostname_stdout
+        and pub_hostname_exists
+    ):
+        os.remove(pub_hostname_path)
+        restart_service(_waagent_service_name(platform_family))
+
+    execute("set hostname", command=["hostnamectl", "set-hostname", hostname])
+    execute(
+        "update hostname via jetpack",
+        command=[
+            "/opt/cycle/jetpack/system/embedded/bin/python",
+            "-c",
+            "import jetpack.converge as jc; jc._send_installation_status('warning')",
+        ],
+    )
