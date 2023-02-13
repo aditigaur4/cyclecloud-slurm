@@ -2,6 +2,7 @@ import os
 import json
 import csv
 import tabulate
+from datetime import datetime
 import hpc.autoscale.hpclogging as log
 from collections import namedtuple
 from hpc.autoscale.cost import azurecost
@@ -167,12 +168,12 @@ class FetchSlurm:
                 running_jobs[job_id] = job['admin_comment']
         return running_jobs
 
-    def fetch_job_records(self) -> str:
+    def fetch_job_records(self, cost_fmt: Formatter) -> str:
 
         _job_rec_file = self.get_job_rec_file()
         if self.use_cache(_job_rec_file):
             return _job_rec_file
-        cmd = self._construct_command()
+        cmd = self._construct_command(cost_fmt)
         with open(_job_rec_file, 'w') as fp:
             output = run_command(cmd, stdout=fp)
             if output.returncode:
@@ -190,7 +191,7 @@ class FetchSlurm:
 
     def process_jobs(self, azcost: azurecost, out: str, cost_fmt: Formatter):
         
-        _job_rec_file = self.fetch_job_records()
+        _job_rec_file = self.fetch_job_records(cost_fmt)
         running = self.process_queue()
         fp = open(_job_rec_file, newline='')
         fo = open(out, 'w', newline='')
@@ -252,11 +253,14 @@ class CostDriver:
 
         self.azcost = azcost
 
-    def run(self, start, end, out):
+    def run(self, start: datetime, end: datetime, out: str):
 
+        cluster = ["aditi-test7"]
+        sacct_start = start.isoformat()
+        sacct_end = end.isoformat()
         cost_fmt = Formatter()
         cost_fmt.validate_format(cost_fmt.DEFAULT_OUTPUT_FORMAT)
-        f = FetchSlurm(start, end, cluster, out)
-        f.process_jobs(self.azcost, cost_fmt=cost_fmt)
+        f = FetchSlurm(sacct_start, sacct_end, cluster)
+        f.process_jobs(self.azcost, out, cost_fmt=cost_fmt)
         f.stats.display()
 
