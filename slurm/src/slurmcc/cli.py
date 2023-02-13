@@ -35,6 +35,7 @@ from hpc.autoscale.node.node import Node
 from . import partition as partitionlib
 from . import util as slutil
 from . import CyclecloudSlurmError
+from .cost import CostDriver
 from hpc.autoscale.results import AllocationResult
 
 #from hpc.autoscale.ccbindings import cluster_service_client as csc
@@ -182,6 +183,9 @@ class SlurmCLI(CommonCLI):
         print("testing azure_cost")
         azcost = azurecost(config)
         print(azcost.test_azure_cost())
+        driver = CostDriver(azcost)
+        driver.run(start, end, out)
+
 
         
 
