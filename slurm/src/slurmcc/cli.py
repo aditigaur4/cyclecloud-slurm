@@ -140,7 +140,7 @@ class SlurmCLI(CommonCLI):
         parser.add_argument("--partition", action='store_true', help="Show costs aggregated by partitions")
         parser.add_argument("--user", action='store_true', help="Show costs aggregated by user")
         parser.add_argument("-f", "--fmt", type=str, help="Comma separated list of formatting options")
-    
+
     def cost(self, config: Dict, start, end, partition, user, fmt, out):
         """
         Cost analysis and reporting tool that maps Azure costs
@@ -160,7 +160,6 @@ class SlurmCLI(CommonCLI):
             raise ValueError("Start date cannot be after end date")
         if end > curr:
             raise ValueError("End date cannot be in the future")
-        
         print(f"end: {end}")
         print(f"partition: {partition}")
         print(f"user: {user}")

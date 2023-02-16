@@ -9,6 +9,7 @@ from hpc.autoscale.cost import azurecost
 from .util import run_command
 
 def get_sacct_fields():
+
     options = []
     cmd = "/usr/bin/sacct -e"
     out = run_command(cmd)
