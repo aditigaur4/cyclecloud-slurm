@@ -189,6 +189,30 @@ class FetchSlurm:
                 ret.append(e)
         return dict(ret)
 
+    def process_partitions(self, azcost: azurecost):
+
+        # run sinfo command for this
+        _names = ['hpc', 'htc']
+
+        usage = azcost.get_usage(self.cluster, self.start, self.end)
+
+        partitions = {}
+        for n in _names:
+            partitions[n] = {}
+
+        for e in usage['usage'][0]['breakdown']:
+            if e['category'] == 'nodearray':
+                for sku in e['vm_sizes']:
+                    partitions[e['node']][sku] = {}
+                    partitions[e['node']][sku]['core_hours'] = e['vm_sizes'][sku]['core_hours']
+                    partitions[e['node']][sku]['region'] = e['vm_sizes'][sizes]['region']
+
+                    rate = azcost.get_retail_rate(sku,partitions[e['node']][sku]['region'])
+                    partitions[e['node']][sku]['rate'] = rate
+                    partitions[e['node']][sku]['cost'] = rate * (partitions[e['node']][sku]['core_hours']/ e['vm_sizes'][sku]['core_count'])
+
+        print(partitions)
+        
     def process_jobs(self, azcost: azurecost, out: str, cost_fmt: Formatter):
         
         _job_rec_file = self.fetch_job_records(cost_fmt)
@@ -263,5 +287,7 @@ class CostDriver:
         cost_fmt.validate_format(cost_fmt.DEFAULT_OUTPUT_FORMAT)
         f = FetchSlurm(sacct_start, sacct_end, cluster)
         f.process_jobs(self.azcost, out, cost_fmt=cost_fmt)
+        log.info("processed_jobs")
+        f.process_partitions(self.azcost)
         f.stats.display()
 
