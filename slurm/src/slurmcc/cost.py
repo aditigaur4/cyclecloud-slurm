@@ -221,9 +221,9 @@ class CostSlurm:
     def get_output_format(self, azcost: azurecost):
 
         az_fmt = azcost.get_azcost_job_format()
-        slurm_fmt =  self.get_slurm_format()
+        #slurm_fmt =  self.get_slurm_format()
 
-        return namedtuple('out_fmt_t', (list(slurm_fmt._fields + az_fmt._fields) + ['cost']))
+        return namedtuple('out_fmt_t', list(self.slurm_fmt_t._fields + az_fmt._fields + self.c_fmt_t._fields))
 
     def process_jobs(self, azcost: azurecost, jobsfp, out_fmt_t):
 
@@ -296,7 +296,7 @@ class CostDriver:
         part_hourly = os.path.join(out, "partition_hourly.csv")
 
         fmt = self.azcost.get_azcost_job_format()
-        out_fmt_t = cost_slurm.get_output_format()
+        out_fmt_t = cost_slurm.get_output_format(self.azcost)
         with open(jobs_csv, 'w') as fp:
             writer = csv.writer(fp, delimiter=',')
             writer.writerow(list(out_fmt_t._fields))
