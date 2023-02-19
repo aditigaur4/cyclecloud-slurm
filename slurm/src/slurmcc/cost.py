@@ -23,17 +23,12 @@ class Formatter():
 
     def __init__(self):
 
-        self.DEFAULT_ACCOUNTING_FORMAT = "jobid,user,account,cluster,partition,ncpus,nnodes,submit,start,end,elapsedraw,state,admincomment"
-        self.DEFAULT_OUTPUT_FORMAT = "jobid,user,cluster,ncpus,nnodes,submit,start,end,elapsedraw,state,sku_name,region,meter,spot,cost,rate,currency"
-        self.DEFAULT_AZCOST_FORMAT="sku_name,region,spot,meter,meterid,metercat,metersubcat,resourcegroup,cost,rate,currency"
+        self.DEFAULT_SLURM_FORMAT = "jobid,user,account,cluster,partition,ncpus,nnodes,submit,start,end,elapsedraw,state,admincomment"
         self.options = "--allusers --duplicates --parsable2 --allocations --noheader"
-        self.slurm_avail_fmt = get_sacct_fields()
-        self.az_fmt = [x.lower() for x in self.DEFAULT_AZCOST_FORMAT.split(',')]
-        self.in_fmt = set(self.DEFAULT_ACCOUNTING_FORMAT.split(','))
-        self.out_fmt = self.DEFAULT_OUTPUT_FORMAT.split(',')
-        self.az_fmt_t = namedtuple('az_fmt', self.az_fmt)
-        self.out_fmt_t = None
-        self.pricing = namedtuple("pricing", "meter,meterid,metercat,resourcegroup,rate,cost,currency")
+        #TODO fix this later
+        self.slurm_avail_fmt = self.DEFAULT_SLURM_FORMAT
+        self.slurm_fmt_t = namedtuple('slurm_fmt_t', self.DEFAULT_SLURM_FORMAT)
+        #self.pricing = namedtuple("pricing", "meter,meterid,metercat,resourcegroup,rate,cost,currency")
 
     def validate_format(self, value: str):
 
@@ -48,7 +43,7 @@ class Formatter():
         _value = [x.lower() for x in value.split(',')]
         wrong_params = [x for x in _value if x not in self.slurm_avail_fmt and x not in self.az_fmt]
         if wrong_params:
-            raise click.BadParameter(f"These parameters are invalid: {' '.join(wrong_params)}")
+            raise ValueError(f"These parameters are invalid: {' '.join(wrong_params)}")
         for f in _value:
             if f in self.slurm_avail_fmt:
                 self.in_fmt.add(f)
@@ -66,7 +61,7 @@ class Formatter():
 
     def get_slurm_format(self):
 
-        return ','.join(self.in_fmt)
+        return ','.join(self.DEFAULT_SLURM_FORMAT)
 
     def filter_by_slurm_user(self, ctx, fmt, value):
 
@@ -104,8 +99,8 @@ class Statistics:
         table.append(['Jobs with admincomment errors', self.admincomment_err])
         print(tabulate(table, headers=['SUMMARY',''], tablefmt="simple"))
 
-class FetchSlurm:
-    def __init__(self, start, end, cluster) -> None:
+class CostSlurm:
+    def __init__(self, start:str, end: str, cluster: str) -> None:
 
         self.start = start
         self. end = end
@@ -122,14 +117,24 @@ class FetchSlurm:
             log.error("Unable to create cache directory {self.cache}")
             log.error(e.strerror)
             raise
+        self.DEFAULT_SLURM_FORMAT = "jobid,user,account,cluster,partition,ncpus,nnodes,submit,start,end,elapsedraw,state,admincomment"
+        self.options = "--allusers --duplicates --parsable2 --allocations --noheader"
+        #TODO fix this later
+        self.slurm_avail_fmt = self.DEFAULT_SLURM_FORMAT
+        self.slurm_fmt_t = namedtuple('slurm_fmt_t', self.DEFAULT_SLURM_FORMAT)
+        self.c_fmt_t = namedtuple('c_fmt_t', ['cost'])
 
-    def _construct_command(self, cost_fmt) -> str:
+    def get_slurm_format(self):
 
-        args = f"{self.sacct} {cost_fmt.options} " \
-                f"-M {','.join(self.cluster)} "\
+        return ','.join(self.DEFAULT_SLURM_FORMAT)
+
+    def _construct_command(self) -> str:
+
+        args = f"{self.sacct} {self.options} " \
+                f"-M {self.cluster} "\
                 f"--start={self.start} " \
                 f"--end={self.end} -o "\
-                f"{cost_fmt.get_slurm_format()}"
+                f"{self.get_slurm_format()}"
         return args
 
     def use_cache(self, filename) -> bool:
@@ -155,12 +160,11 @@ class FetchSlurm:
         return _queue_rec_file
 
     def process_queue(self) -> dict:
-        
         running_jobs = {}
         queue_rec = self.get_queue_records()
         with open(queue_rec, 'r') as fp:
             data = json.load(fp)
-            
+
         for job in data['jobs']:
             if job['job_state'] != 'RUNNING' and job['job_state'] != 'CONFIGURING':
                 continue
@@ -169,12 +173,12 @@ class FetchSlurm:
                 running_jobs[job_id] = job['admin_comment']
         return running_jobs
 
-    def fetch_job_records(self, cost_fmt: Formatter) -> str:
+    def fetch_job_records(self) -> str:
 
         _job_rec_file = self.get_job_rec_file()
         if self.use_cache(_job_rec_file):
             return _job_rec_file
-        cmd = self._construct_command(cost_fmt)
+        cmd = self._construct_command(c)
         with open(_job_rec_file, 'w') as fp:
             output = run_command(cmd, stdout=fp)
             if output.returncode:
@@ -182,7 +186,7 @@ class FetchSlurm:
         return _job_rec_file
 
     def parse_admincomment(self, comment: str):
-        
+
         ret = []
         kv = [x.split('=') for x in comment.split(',')]
         for e in kv:
@@ -213,17 +217,23 @@ class FetchSlurm:
                     partitions[e['node']][sku]['cost'] = rate * (partitions[e['node']][sku]['core_hours']/ e['vm_sizes'][sku]['core_count'])
 
         print(partitions)
-        
-    def process_jobs(self, azcost: azurecost, out: str, cost_fmt: Formatter):
-        
-        _job_rec_file = self.fetch_job_records(cost_fmt)
+
+    def get_output_format(self, azcost: azurecost):
+
+        az_fmt = azcost.get_azcost_job_format()
+        slurm_fmt =  self.get_slurm_format()
+
+        return namedtuple('out_fmt_t', (list(slurm_fmt._fields + az_fmt._fields) + ['cost']))
+
+    def process_jobs(self, azcost: azurecost, jobsfp, out_fmt_t):
+
+        _job_rec_file = self.fetch_job_records()
         running = self.process_queue()
         fp = open(_job_rec_file, newline='')
-        fo = open(out, 'w', newline='')
         reader = csv.reader(fp, delimiter='|')
-        writer = csv.writer(fo, delimiter=',')
-        writer.writerow(list(cost_fmt.out_fmt_t._fields))
-        for row in map(cost_fmt.in_fmt_t._make, reader):
+        writer = csv.writer(jobsfp, delimiter=',')
+
+        for row in map(self.slurm_fmt_t._make, reader):
             self.stats.jobs += 1
             if row.state == 'RUNNING' and int(row.jobid) in running:
                 admincomment = running[int(row.jobid)]
@@ -244,42 +254,62 @@ class FetchSlurm:
                 self.stats.admincomment_err += 1
                 self.stats.unprocessed += 1
                 continue
-            cluster = row.cluster
             charge_factor = float(row.ncpus) / float(cpupernode)
 
-            pricing = azcost.get_retail_rate(sku_name, region, spot)
-
-            charged_cost = ((pricing['retailPrice']/3600) * float(row.elapsedraw)) * charge_factor
-
+            az_fmt = azcost.get_azcost_job(sku_name, region, spot)
+            charged_cost = ((az_fmt.rate/3600) * float(row.elapsedraw)) * charge_factor
+            c_fmt = self.c_fmt_t(cost=charged_cost)
             if (region,sku_name) not in self.stats.cost_per_sku:
                 self.stats.cost_per_sku[(region,sku_name)] = 0
             self.stats.cost_per_sku[(region,sku_name)] += charged_cost
 
-            az_fmt = cost_fmt.az_fmt_t(sku_name=sku_name, meter=pricing['meterName'], rate=pricing['retailPrice'],
-                                        cost=charged_cost, region=region,spot=spot,metercat=pricing['serviceName'],
-                                        meterid=pricing['meterId'], currency=pricing['currencyCode'], resourcegroup='null',
-                                        metersubcat='null')
             out_row = []
-            for f in cost_fmt.out_fmt_t._fields:
-                if f in cost_fmt.in_fmt_t._fields:
+            for f in out_fmt_t._fields:
+                if f in self.slurm_fmt_t._fields:
                     out_row.append(row._asdict()[f])
                 elif f in az_fmt._fields:
                     out_row.append(az_fmt._asdict()[f])
+                elif f in self.c_fmt_t:
+                    out_row.append(c_fmt._asdict()[f])
                 else:
                     log.error(f"encountered an unexpected field {f}")
 
             writer.writerow(out_row)
             self.stats.processed += 1
-        
         fp.close()
-        fo.close()
 
 class CostDriver:
-    def __init__(self, azcost: azurecost):
+    def __init__(self, azcost: azurecost, config: dict):
 
         self.azcost = azcost
+        self.cluster = config['cluster_name']
 
     def run(self, start: datetime, end: datetime, out: str):
+
+        sacct_start = start.isoformat()
+        sacct_end = end.isoformat()
+        cost_slurm = CostSlurm(start=sacct_start, end=sacct_end, cluster=self.cluster)
+        os.makedirs(out, exist_ok=True)
+
+        jobs_csv = os.path.join(out, "jobs.csv")
+        part_csv = os.path.join(out, "partition.csv")
+        part_hourly = os.path.join(out, "partition_hourly.csv")
+
+        fmt = self.azcost.get_azcost_job_format()
+        out_fmt_t = cost_slurm.get_output_format()
+        with open(jobs_csv, 'w') as fp:
+            writer = csv.writer(fp, delimiter=',')
+            writer.writerow(list(out_fmt_t._fields))
+            cost_slurm.process_jobs(azcost=self.azcost, jobsfp=fp, out_fmt_t=out_fmt_t)
+
+        fmt = self.azcost.get_azcost_nodearray_format()
+        with open(part_csv, 'w') as fp:
+            writer = csv.writer(fp, delimiter=',')
+            writer.writerow(list(fmt._fields))
+        cost_slurm.stats.display()
+
+
+    def run_old(self, start: datetime, end: datetime, out: str):
 
         cluster = ["aditi-test7"]
         sacct_start = start.isoformat()

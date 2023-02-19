@@ -140,7 +140,7 @@ class SlurmCLI(CommonCLI):
         parser.add_argument("--partition", action='store_true', help="Show costs aggregated by partitions")
         parser.add_argument("--user", action='store_true', help="Show costs aggregated by user")
         parser.add_argument("-f", "--fmt", type=str, help="Comma separated list of formatting options")
-
+        #parser.add_argument("-l", "--longhelp", help="Description and example on how to run the cost reporting tool.")
     def cost(self, config: Dict, start, end, partition, user, fmt, out):
         """
         Cost analysis and reporting tool that maps Azure costs
@@ -160,21 +160,20 @@ class SlurmCLI(CommonCLI):
             raise ValueError("Start date cannot be after end date")
         if end > curr:
             raise ValueError("End date cannot be in the future")
+        if start == end:
+            end = datetime.combine(end.date(), datetime.max.time())
         print(f"end: {end}")
         print(f"partition: {partition}")
         print(f"user: {user}")
         print(f"format: {fmt}")
 
-        filename = os.path.abspath(out)
+        dirname = os.path.abspath(out)
         # verify output file is writable
-        with open(filename, 'w') as fp:
-            pass
-        print(f"out: {out}")
 
         print("testing azure_cost")
         azcost = azurecost(config)
         print(azcost.test_azure_cost())
-        driver = CostDriver(azcost)
+        driver = CostDriver(azcost, config)
         driver.run(start, end, out)
 
     def partitions_parser(self, parser: ArgumentParser) -> None:
