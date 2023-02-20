@@ -19,65 +19,6 @@ def get_sacct_fields():
 
     return options
 
-class Formatter():
-
-    def __init__(self):
-
-        self.DEFAULT_SLURM_FORMAT = "jobid,user,account,cluster,partition,ncpus,nnodes,submit,start,end,elapsedraw,state,admincomment"
-        self.options = "--allusers --duplicates --parsable2 --allocations --noheader"
-        #TODO fix this later
-        self.slurm_avail_fmt = self.DEFAULT_SLURM_FORMAT
-        self.slurm_fmt_t = namedtuple('slurm_fmt_t', self.DEFAULT_SLURM_FORMAT)
-        #self.pricing = namedtuple("pricing", "meter,meterid,metercat,resourcegroup,rate,cost,currency")
-
-    def validate_format(self, value: str):
-
-        add_fmt = False
-        subtract_fmt = False
-        if value.startswith("+"):
-            value = value.lstrip("+")
-            add_fmt = True
-        elif value.startswith("-"):
-            value = value.lstrip("-")
-            subtract_fmt = True
-        _value = [x.lower() for x in value.split(',')]
-        wrong_params = [x for x in _value if x not in self.slurm_avail_fmt and x not in self.az_fmt]
-        if wrong_params:
-            raise ValueError(f"These parameters are invalid: {' '.join(wrong_params)}")
-        for f in _value:
-            if f in self.slurm_avail_fmt:
-                self.in_fmt.add(f)
-
-        if add_fmt:
-            [self.out_fmt.append(x) for x in _value if x not in self.out_fmt]
-        elif subtract_fmt:
-            [self.out_fmt.remove(x) for x in _value if x in self.out_fmt]
-        else:
-            self.out_fmt = _value
-
-        self.out_fmt_t = namedtuple('out_fmt_t', self.out_fmt)
-        self.in_fmt_t = namedtuple('in_fmt_t', self.in_fmt)
-        return _value
-
-    def get_slurm_format(self):
-
-        return ','.join(self.DEFAULT_SLURM_FORMAT)
-
-    def filter_by_slurm_user(self, ctx, fmt, value):
-
-        if value:
-            useropt = f"-u {value}"
-            self.options = self.options + " " + useropt
-        return value
-
-    #TODO change this.
-    def filter_by_partition(self, ctx, fmt, value):
-
-        if value:
-            opt = f"-r {value}"
-            self.options = self.options + " " + opt
-        return value
-
 class Statistics:
 
     def __init__(self):
@@ -307,18 +248,4 @@ class CostDriver:
             writer = csv.writer(fp, delimiter=',')
             writer.writerow(list(fmt._fields))
         cost_slurm.stats.display()
-
-
-    def run_old(self, start: datetime, end: datetime, out: str):
-
-        cluster = ["aditi-test7"]
-        sacct_start = start.isoformat()
-        sacct_end = end.isoformat()
-        cost_fmt = Formatter()
-        cost_fmt.validate_format(cost_fmt.DEFAULT_OUTPUT_FORMAT)
-        f = FetchSlurm(sacct_start, sacct_end, cluster)
-        f.process_jobs(self.azcost, out, cost_fmt=cost_fmt)
-        log.info("processed_jobs")
-        f.process_partitions(self.azcost)
-        f.stats.display()
 
