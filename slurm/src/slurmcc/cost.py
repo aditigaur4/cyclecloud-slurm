@@ -247,5 +247,6 @@ class CostDriver:
         with open(part_csv, 'w') as fp:
             writer = csv.writer(fp, delimiter=',')
             writer.writerow(list(fmt._fields))
+            count = self.azcost.get_azcost_nodearay(fp, start=sacct_start, end=sacct_end)
         cost_slurm.stats.display()
 
