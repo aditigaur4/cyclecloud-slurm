@@ -12,6 +12,7 @@ from argparse import ArgumentParser
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
+from datetime import time
 from math import ceil, floor
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, TextIO, Union
 
@@ -147,9 +148,7 @@ class SlurmCLI(CommonCLI):
         to SLURM Job Accounting data. This is an experimental
         feature.
         """
-        print(f"config: {config}")
         config['cache_root'] = "/tmp"
-        print(f"start={start}")
         curr = datetime.today()
         delta = timedelta(days=365)
 
@@ -161,18 +160,14 @@ class SlurmCLI(CommonCLI):
         if end > curr:
             raise ValueError("End date cannot be in the future")
         if start == end:
-            end = datetime.combine(end.date(), datetime.max.time())
-        print(f"end: {end}")
-        print(f"partition: {partition}")
-        print(f"user: {user}")
-        print(f"format: {fmt}")
+            end = datetime.combine(end.date(), time(hour=23,minute=59,second=59))
+        logging.debug(f"start: {start}")
+        logging.debug(f"end: {end}")
 
         dirname = os.path.abspath(out)
         # verify output file is writable
 
-        print("testing azure_cost")
         azcost = azurecost(config)
-        print(azcost.test_azure_cost())
         driver = CostDriver(azcost, config)
         driver.run(start, end, out)
 

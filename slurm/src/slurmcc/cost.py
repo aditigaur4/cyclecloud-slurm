@@ -134,7 +134,7 @@ class CostSlurm:
                 f"-M {self.cluster} "\
                 f"--start={self.start} " \
                 f"--end={self.end} -o "\
-                f"{self.get_slurm_format()}"
+                f"{self.DEFAULT_SLURM_FORMAT}"
         return args
 
     def use_cache(self, filename) -> bool:
@@ -178,7 +178,7 @@ class CostSlurm:
         _job_rec_file = self.get_job_rec_file()
         if self.use_cache(_job_rec_file):
             return _job_rec_file
-        cmd = self._construct_command(c)
+        cmd = self._construct_command()
         with open(_job_rec_file, 'w') as fp:
             output = run_command(cmd, stdout=fp)
             if output.returncode:
@@ -269,7 +269,7 @@ class CostSlurm:
                     out_row.append(row._asdict()[f])
                 elif f in az_fmt._fields:
                     out_row.append(az_fmt._asdict()[f])
-                elif f in self.c_fmt_t:
+                elif f in self.c_fmt_t._fields:
                     out_row.append(c_fmt._asdict()[f])
                 else:
                     log.error(f"encountered an unexpected field {f}")
