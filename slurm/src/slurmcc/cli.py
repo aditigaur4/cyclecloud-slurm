@@ -534,13 +534,6 @@ class SlurmCLI(CommonCLI):
         assert len(nodes_filtered) == 1
         node = nodes_filtered[0]
 
-        toks = check_output(["scontrol", "show", "node", node_name]).decode().split()
-        cpus = -1
-        for tok in toks:
-            tok = tok.lower()
-            if tok.startswith("cputot"):
-                cpus = int(tok.split("=")[1])
-
         json.dump(
             [
                 {
@@ -549,16 +542,13 @@ class SlurmCLI(CommonCLI):
                     "vm_size": node.vm_size,
                     "spot": node.spot,
                     "nodearray": node.nodearray,
-                    "cpus": cpus,
                     "pcpu_count": node.pcpu_count,
                     "vcpu_count": node.vcpu_count,
                     "gpu_count": node.gpu_count,
                     "memgb": node.memory.value,
                 }
             ],
-            sys.stdout,
-            indent=2,
-        )
+            sys.stdout)
 
     def _wait_for_resume(
         self,

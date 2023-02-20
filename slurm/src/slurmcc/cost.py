@@ -135,30 +135,6 @@ class CostSlurm:
                 ret.append(e)
         return dict(ret)
 
-    def process_partitions(self, azcost: azurecost):
-
-        # run sinfo command for this
-        _names = ['hpc', 'htc']
-
-        usage = azcost.get_usage(self.cluster, self.start, self.end)
-
-        partitions = {}
-        for n in _names:
-            partitions[n] = {}
-
-        for e in usage['usage'][0]['breakdown']:
-            if e['category'] == 'nodearray':
-                for sku in e['vm_sizes']:
-                    partitions[e['node']][sku] = {}
-                    partitions[e['node']][sku]['core_hours'] = e['vm_sizes'][sku]['core_hours']
-                    partitions[e['node']][sku]['region'] = e['vm_sizes'][sizes]['region']
-
-                    rate = azcost.get_retail_rate(sku,partitions[e['node']][sku]['region'])
-                    partitions[e['node']][sku]['rate'] = rate
-                    partitions[e['node']][sku]['cost'] = rate * (partitions[e['node']][sku]['core_hours']/ e['vm_sizes'][sku]['core_count'])
-
-        print(partitions)
-
     def get_output_format(self, azcost: azurecost):
 
         az_fmt = azcost.get_azcost_job_format()
@@ -249,4 +225,3 @@ class CostDriver:
             writer.writerow(list(fmt._fields))
             count = self.azcost.get_azcost_nodearray(fp, start=sacct_start, end=sacct_end)
         cost_slurm.stats.display()
-

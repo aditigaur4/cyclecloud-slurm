@@ -1,24 +1,28 @@
 #!/bin/bash
 set -x
-set -e 
-log=/tmp/prolog.log
-#echo $SLURM_JOB_NODELIST >> /tmp/prolog.log
-nodename=$(/bin/scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
-echo $nodename,$SLURM_JOB_ID >> $log
-json=$(/opt/azurehpc/slurm/get_acct_info.sh $nodename 2>>$log)
-ret=$(echo $json | jq '. | length')
 
-echo "json: " $json "ret: " $ret >> $log
-while [ $ret == 0 ];
+log=/var/log/slurmctld/prolog_slurmctld.log
+script=/opt/azurehpc/slurm/get_acct_info.sh
+scontrol=/bin/scontrol
+JQ=/bin/jq
+job=$SLURM_JOBID
+
+nodename=$($scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
+
+ret=0
+count=0
+
+while [ $ret -eq 0 ] && [ $count -lt 5 ]
 do
-        sleep 1
-        json=$(/opt/azurehpc/slurm/get_acct_info.sh $nodename 2>>$log)
-        ret=$(echo $json | jq '. | length')
+	sleep 2
+	output=$($script $nodename 2>>$log)
+	ret=$(echo $output | $JQ '. | length')
+	echo "DEBUG: json: " $output "ret: " $ret "job: " $SLURM_JOBID "nodename: " $nodename >> $log
+	count=$((count+1))
 done
-sku_name=$( echo $json | jq .[0].vm_size -r)
-region=$( echo $json | jq .[0].location -r)
-spot=$( echo $json | jq .[0].spot -r)
-tcpus=$( echo $json | jq .[0].cpus -r)
-commentstr="sku=$sku_name,region=$region,spot=$spot,cpu=$tcpus"
-echo $commentstr, $SLURM_JOB_ID >> $log
-/bin/scontrol update job=$SLURM_JOB_ID, admincomment=$commentstr
+
+if [ $ret -eq 0 ]; then
+	echo "ERROR: Could not process get node info for admincomment" >> $log
+else
+	$scontrol update job=$job admincomment="$output"
+fi
