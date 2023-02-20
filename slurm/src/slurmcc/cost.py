@@ -128,12 +128,7 @@ class CostSlurm:
 
     def parse_admincomment(self, comment: str):
 
-        ret = []
-        kv = [x.split('=') for x in comment.split(',')]
-        for e in kv:
-            if len(e) == 2:
-                ret.append(e)
-        return dict(ret)
+        return json.loads(comment)
 
     def get_output_format(self, azcost: azurecost):
 
@@ -158,15 +153,12 @@ class CostSlurm:
             else:
                 admincomment = row.admincomment
             try:
-                comment_d = self.parse_admincomment(admincomment)
-                sku_name = comment_d['sku']
-                cpupernode = comment_d['cpu']
-                region = comment_d['region']
-                #TODO: change this hack.
-                spot = bool(comment_d['spot'] == 'true')
-                if not sku_name or not cpupernode or not region:
-                    raise ValueError
-            except (KeyError, ValueError) as e:
+                comment_d = self.parse_admincomment(admincomment)[0]
+                sku_name = comment_d['vm_size']
+                cpupernode = comment_d['pcpu_count']
+                region = comment_d['location']
+                spot = comment_d['spot']
+            except json.JSONDecodeError as e:
                 log.debug(f"Cannot parse admincomment job={row.jobid} cluster={row.cluster}")
                 self.stats.admincomment_err += 1
                 self.stats.unprocessed += 1
