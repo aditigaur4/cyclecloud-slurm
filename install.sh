@@ -70,11 +70,7 @@ chmod +x $VENV/bin/azslurm
 azslurm -h 2>&1 > /dev/null || exit 1
 
 
-if [ ! -e /root/bin ]; then
-    mkdir /root/bin
-fi
-
-ln -sf $VENV/bin/azslurm /root/bin/
+ln -sf $VENV/bin/azslurm /usr/bin/
 
 INSTALL_DIR=$(dirname $VENV)
 
